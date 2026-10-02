@@ -1,4 +1,3 @@
 data-update.log
-*.tmp
 __pycache__/
-*.pyc
+*.py[cod]

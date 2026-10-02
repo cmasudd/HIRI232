@@ -16,7 +16,8 @@ git pull --ff-only origin "$BRANCH"
 git add -- data/hiripro-232.csv
 if git diff --cached --quiet -- data/hiripro-232.csv; then
   echo "HiriPro 232: sin cambios de datos"
-  exit 0
+else
+  git commit -m "datos: actualización HiriPro 232 $(date '+%Y-%m-%d %H:%M')" -- data/hiripro-232.csv
 fi
-git commit -m "datos: actualización HiriPro 232 $(date '+%Y-%m-%d %H:%M')" -- data/hiripro-232.csv
+# Reintenta también un commit local que haya quedado tras una falla de red.
 git push origin "$BRANCH"
