@@ -1,0 +1,19 @@
+{
+  "access": {
+    "username": "admin",
+    "password": "1234"
+  },
+  "station": {
+    "id": 232,
+    "name": "HIRIPRO-V5",
+    "location": "Ante Puerto Lirquén",
+    "latitude": -36.723383,
+    "longitude": -72.980878
+  },
+  "data": {
+    "mode": "demo",
+    "csvUrl": "data/hiripro-232.csv",
+    "refreshMinutes": 10,
+    "staleAfterMinutes": 60
+  }
+}
