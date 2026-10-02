@@ -21,6 +21,12 @@ test('only 232 is displayed, equivalent timestamps deduplicate and rows sort',()
 test('malformed CSV and dates without timezone fail visibly',()=>{
  const c=context();assert.throws(()=>c.run('parseCSV("wrong,columns\\n1,2")'),/formato/);c.ctx.input=[{...row,timestamp:'2026-10-02T13:00:00'}];assert.throws(()=>c.run('normalize(input)'),/zona horaria/);
 });
+test('public API latest row maps the eight variables and Chile wall time',()=>{
+ const c=context(),api={data:{tableData:[{codigo_interno:'HIRIPRO-V5',fecha:'2026-10-02T14:45:20',
+  'PMS5003 [Material particulado PM 2.5 (µg/m³)]':'12','PMS5003 [Material particulado PM 1.0 (µg/m³)]':'8','PMS5003 [Material particulado PM 10 (µg/m³)]':'20',
+  'PMS5003 [Grados celcius (°C)]':'17','PMS5003 [Humedad (%)]':'60','SHT40 [Grados celcius (°C)]':'16','SHT40 [Humedad (%)]':'61','SIM7600G [Intensidad señal telefónica (Adimensional)]':'22'}]}};
+ c.ctx.input=api;const result=c.run('apiLatestRow(input)');assert.equal(result.timestamp,'2026-10-02T17:45:20.000Z');assert.equal(result.pm25_ugm3,12);assert.equal(result.signal,22);
+});
 test('demo contains all eight variables for 232 and no other sensors',()=>{
  const c=context();const result=c.run('demoRows()');assert.equal(result.length,721);assert.ok(result.every(r=>r.sensor_id===232&&Object.keys(r).length===10));
 });

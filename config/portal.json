@@ -11,9 +11,11 @@
     "longitude": -72.980878
   },
   "data": {
-    "mode": "demo",
+    "mode": "csv",
     "csvUrl": "data/hiripro-232.csv",
+    "latestUrl": "https://api-sensores.cmasccp.cl/v3/vista-previa?id_dispositivo=232&limite=1",
     "refreshMinutes": 10,
+    "historyUpdateMinutes": 60,
     "staleAfterMinutes": 60
   }
 }

@@ -10,6 +10,16 @@ const VARIABLES = [
   {key:'sht_humidity_pct', label:'Humedad SHT40', short:'Humedad', unit:'%', instrument:'SHT40', icon:'⋄', color:'#467d9e'},
   {key:'signal', label:'Intensidad de señal telefónica', short:'Señal telefónica', unit:'adimensional', instrument:'SIM7600G', icon:'▥', color:'#789556'}
 ];
+const LIVE_COLUMNS = {
+  pm25_ugm3:'PMS5003 [Material particulado PM 2.5 (µg/m³)]',
+  pm1_ugm3:'PMS5003 [Material particulado PM 1.0 (µg/m³)]',
+  pm10_ugm3:'PMS5003 [Material particulado PM 10 (µg/m³)]',
+  pms_temperature_c:'PMS5003 [Grados celcius (°C)]',
+  pms_humidity_pct:'PMS5003 [Humedad (%)]',
+  sht_temperature_c:'SHT40 [Grados celcius (°C)]',
+  sht_humidity_pct:'SHT40 [Humedad (%)]',
+  signal:'SIM7600G [Intensidad señal telefónica (Adimensional)]'
+};
 let config, rows = [], chart, stationMap, stationMarker, refreshTimer, authenticated = false, loading = false;
 const HEALTH_CATEGORIES = [
   {label:'Buena',color:'#22845a',note:'Menor nivel de preocupación por contaminación.'},
@@ -150,6 +160,29 @@ const dayFormat = new Intl.DateTimeFormat('en-CA', {timeZone:'America/Santiago',
 function localDay(timestamp) { const p = Object.fromEntries(dayFormat.formatToParts(new Date(timestamp)).map(x => [x.type,x.value])); return `${p.year}-${p.month}-${p.day}`; }
 function localHour(timestamp) { return `${localDay(timestamp)} ${new Intl.DateTimeFormat('en-GB',{timeZone:'America/Santiago',hour:'2-digit',hourCycle:'h23'}).format(new Date(timestamp))}`; }
 function number(value) { if (value === undefined || value === null || String(value).trim() === '') return null; const n = Number(value); return Number.isFinite(n) ? n : null; }
+function chileWallTimeToIso(value) {
+  if(/(?:Z|[+-]\d{2}:\d{2})$/.test(value))return new Date(value).toISOString();
+  const match=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/.exec(value);
+  if(!match)throw Error('Fecha de última lectura inválida.');
+  const wanted=match.slice(1).map(Number),target=Date.UTC(wanted[0],wanted[1]-1,wanted[2],wanted[3],wanted[4],wanted[5]);
+  let guess=target;
+  const formatter=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Santiago',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+  for(let i=0;i<3;i++){const p=Object.fromEntries(formatter.formatToParts(new Date(guess)).map(x=>[x.type,x.value]));const observed=Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second);guess+=target-observed;}
+  return new Date(guess).toISOString();
+}
+function apiLatestRow(payload) {
+  const raw=payload?.data?.tableData?.[0];
+  if(!raw||raw.codigo_interno!=='HIRIPRO-V5')throw Error('La API no devolvió HIRIPRO-V5.');
+  const result={timestamp:chileWallTimeToIso(raw.fecha),sensor_id:232,...Object.fromEntries(Object.entries(LIVE_COLUMNS).map(([key,column])=>[key,number(raw[column])]))};
+  if(result.pms_temperature_c===0&&result.pms_humidity_pct===0){result.pms_temperature_c=null;result.pms_humidity_pct=null;}
+  if(result.sht_temperature_c===0&&result.sht_humidity_pct===0){result.sht_temperature_c=null;result.sht_humidity_pct=null;}
+  return result;
+}
+async function fetchLatestRow() {
+  const response=await fetch(config.data.latestUrl,{cache:'no-store'});
+  if(!response.ok)throw Error(`API HTTP ${response.status}`);
+  return apiLatestRow(await response.json());
+}
 // Quoted CSV fields, escaped quotes and either LF or CRLF are accepted.
 function parseCSV(text) {
   const records = []; let record = [], field = '', quoted = false;
@@ -231,12 +264,12 @@ function renderHistory() {
 }
 async function loadData() {
   if(loading||!authenticated)return;loading=true;$('refresh').disabled=true;
-  try {let next;if(config.data.mode==='demo')next=demoRows();else {const response=await fetch(config.data.csvUrl,{cache:'no-store'});if(!response.ok)throw Error(`HTTP ${response.status}`);next=normalize(parseCSV(await response.text()));}rows=next;
+  try {let next,liveAvailable=false;if(config.data.mode==='demo')next=demoRows();else {const response=await fetch(config.data.csvUrl,{cache:'no-store'});if(!response.ok)throw Error(`CSV HTTP ${response.status}`);next=normalize(parseCSV(await response.text()));try{next=normalize([...next,await fetchLatestRow()]);liveAvailable=true;}catch(error){console.warn('Última lectura no disponible:',error.message);}}rows=next;
     const latest=rows.at(-1);$('demo-badge').hidden=config.data.mode!=='demo';$('updated').textContent=latest?dateFormat.format(new Date(latest.timestamp)):'Sin mediciones';
     const stale=latest&&Date.now()-new Date(latest.timestamp).getTime()>config.data.staleAfterMinutes*60000;
     $('status-dot').className=`status-dot ${config.data.mode==='demo'?'demo':!latest||stale?'stale':'live'}`;
     $('data-status').textContent=config.data.mode==='demo'?'Vista de demostración':!latest?'Esperando mediciones':stale?'Sin lecturas recientes':'Mediciones actualizadas';
-    $('data-notice').textContent=config.data.mode==='demo'?'Datos simulados para presentar el servicio. No corresponden a mediciones reales del puerto.':!latest?'Todavía no hay datos publicados para el sensor 232.':`El portal revisa nuevas publicaciones cada ${config.data.refreshMinutes} minutos.${stale?' La última lectura está fuera del intervalo esperado.':''}`;
+    $('data-notice').textContent=config.data.mode==='demo'?'Datos simulados para presentar el servicio. No corresponden a mediciones reales del puerto.':!latest?'Todavía no hay datos publicados para el sensor 232.':`Última lectura revisada cada ${config.data.refreshMinutes} minutos${liveAvailable?' desde la API':' (se mantiene el CSV publicado)'}; histórico actualizado cada ${config.data.historyUpdateMinutes} minutos.${stale?' La última lectura está fuera del intervalo esperado.':''}`;
     if(latest&&!$('date-from').value){$('date-to').value=localDay(latest.timestamp);$('date-from').value=localDay(new Date(new Date(latest.timestamp).getTime()-7*86400000).toISOString());}
     updateMapSummary();renderCards();renderDailySummary();renderHistory();
   }catch(error){$('data-status').textContent='No se pudo actualizar';$('status-dot').className='status-dot stale';$('data-notice').textContent=`No fue posible cargar los datos. ${rows.length?'Se mantiene la última descarga disponible.':'Revisa la publicación del archivo de la estación.'} Detalle: ${error.message}`;updateMapSummary();renderCards();renderDailySummary();renderHistory();}
@@ -250,7 +283,7 @@ function downloadCSV(selectedRows,suffix) {
 }
 async function init(){
   $('login-form').querySelector('[type=submit]').disabled=true;
-  try{const response=await fetch('config/portal.json',{cache:'no-store'});if(!response.ok)throw Error('No se encontró config/portal.json.');config=await response.json();if(config.station?.id!==232||!Number.isFinite(config.station.latitude)||!Number.isFinite(config.station.longitude)||!config.access?.username||!config.access?.password||!['demo','csv'].includes(config.data?.mode)||!config.data.csvUrl||!(config.data.refreshMinutes>0)||!(config.data.staleAfterMinutes>0))throw Error('Configuración del portal inválida.');$('login-form').querySelector('[type=submit]').disabled=false;}
+  try{const response=await fetch('config/portal.json',{cache:'no-store'});if(!response.ok)throw Error('No se encontró config/portal.json.');config=await response.json();if(config.station?.id!==232||!Number.isFinite(config.station.latitude)||!Number.isFinite(config.station.longitude)||!config.access?.username||!config.access?.password||!['demo','csv'].includes(config.data?.mode)||!config.data.csvUrl||!config.data.latestUrl||!(config.data.refreshMinutes>0)||!(config.data.historyUpdateMinutes>0)||!(config.data.staleAfterMinutes>0))throw Error('Configuración del portal inválida.');$('login-form').querySelector('[type=submit]').disabled=false;}
   catch(error){$('config-error').textContent=`No se pudo preparar el portal: ${error.message} Abre el sitio desde un servidor HTTP.`;$('config-error').hidden=false;return;}
   $('variable').innerHTML=VARIABLES.map(v=>`<option value="${v.key}">${v.instrument} · ${v.label}</option>`).join('');
   renderHealthTable();

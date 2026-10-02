@@ -44,5 +44,24 @@ class PublishTests(unittest.TestCase):
                 module.publish([self.row(sensor_id=39)], destination)
             self.assertEqual(destination.read_bytes(), original)
 
+    def test_all_history_replaces_seed_rows(self):
+        with tempfile.TemporaryDirectory() as folder:
+            destination = Path(folder) / '232.csv'
+            module.publish([self.row(timestamp='2026-09-01T10:00:00-03:00')], destination)
+            module.publish([self.row()], destination, replace=True)
+            with destination.open(encoding='utf-8') as file:
+                rows = list(module.csv.DictReader(file))
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]['timestamp'], '2026-10-02T13:00:00Z')
+
+    def test_zero_temperature_humidity_pairs_are_missing(self):
+        cleaned = module.clean_snapshot({
+            'sht_temperature_c': 0, 'sht_humidity_pct': 0,
+            'pms_temperature_c': 15, 'pms_humidity_pct': 0,
+        })
+        self.assertEqual(cleaned['sht_temperature_c'], '')
+        self.assertEqual(cleaned['sht_humidity_pct'], '')
+        self.assertEqual(cleaned['pms_humidity_pct'], 0)
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,73 +1,102 @@
-# Instrucciones para el agente del servidor: publicar HiriPro 232
+# Operación del publicador HiriPro 232
 
-## Objetivo y alcance
+## Arquitectura activa
 
-Publicar las mediciones del único sensor **232 / HIRIPRO-V5**, de Ante Puerto Lirquén. Se retiró la integración de Coyhaique: no ejecutar el antiguo descargador de Looker ni publicar otros sensores.
+```text
+MariaDB local --cada hora--> data/hiripro-232.csv --> GitHub Pages
+API V3 /vista-previa --cada 10 min-----------------> navegador
+```
 
-El frontend está listo. Falta conocer la URL real y la forma de respuesta de la API. **No inventar el endpoint ni presentar datos simulados como reales.** Solicitar al responsable URL, autenticación, rango histórico, frecuencia de medición y mecanismo de paginación. No usar `admin / 1234` como credenciales de la API: corresponden solamente al acceso visual del portal.
+El único dispositivo admitido es **232 / HIRIPRO-V5**. El exportador verifica
+ese código antes de leer datos. El histórico nunca se obtiene desde el
+navegador y la consulta viva solicita una sola fila.
 
-## Contrato de datos
+## Perfil de publicación
 
-El importador `scripts/publish_hiripro.py` acepta una lista JSON o un objeto con `records` como lista, con estos campos canónicos:
+Se publican ocho series validadas:
 
-| Campo | Variable | Unidad |
-|---|---|---|
-| timestamp | Fecha de medición, ISO 8601 con Z u offset | Ej. 2026-10-02T13:00:00Z |
-| sensor_id | Identificador | 232 |
-| pm1_ugm3 | PMS5003 · PM 1.0 | µg/m³ |
-| pm25_ugm3 | PMS5003 · PM 2.5 | µg/m³ |
-| pm10_ugm3 | PMS5003 · PM 10 | µg/m³ |
-| pms_temperature_c | PMS5003 · Temperatura | °C |
-| pms_humidity_pct | PMS5003 · Humedad | % |
-| sht_temperature_c | SHT40 · Temperatura | °C |
-| sht_humidity_pct | SHT40 · Humedad | % |
-| signal | SIM7600G · Intensidad de señal telefónica | Adimensional |
+| Instrumento | Variables |
+|---|---|
+| PMS5003 | PM1, PM2.5, PM10, temperatura, humedad |
+| SHT40 | temperatura, humedad |
+| SIM7600G | intensidad de señal (0–31, sin convertir a dBm o porcentaje) |
 
-Valores ausentes: `null` o campo ausente; nunca usar cero como sustituto. No convertir la señal a dBm o porcentaje sin documentación del proveedor. El importador rechaza NaN, infinitos, humedad fuera de 0–100 y concentraciones negativas. Filtra otros sensores, ordena en UTC, deduplica por timestamp, conserva el histórico y mantiene valores previos ante actualizaciones parciales. Solo reemplaza el CSV cuando toda la importación es válida; los errores no vacían el archivo publicado.
+El perfil del 2 de octubre de 2026 encontró 12.037 ciclos entre el 22 de abril
+y el 2 de octubre. SO₂, TVOC, eCO₂, latitud, longitud, velocidad, satélites y
+PM100 contenían solamente `-1` y `0`. El voltaje tenía 11.972 ceros en 12.037
+filas y su último valor positivo era del 31 de julio. Se excluyen hasta una
+nueva validación. Los pares temperatura/humedad exactamente `0/0` de un mismo
+instrumento se tratan como ausencia de lectura; los ceros de material
+particulado se conservan.
 
-Si la API devuelve otro formato, crear un adaptador en el servidor que traduzca los campos a este contrato. Si entrega variables por separado, agrupar por fecha y sensor. Reunir **todas las páginas** en un JSON canónico antes de importar: el importador genérico no conoce la paginación particular de la API. Resolver explícitamente la zona horaria si la API trae fechas sin offset. No inferir UTC de fechas locales.
+## Clon exclusivo
 
-## Primera carga y actualización
+La automatización vive en:
 
-1. Usar un clon de publicación exclusivo en el servidor y detener/reemplazar el cron anterior de Aire Aysén. Comprobar que la rama del clon sea la publicada por GitHub Pages.
-2. Obtener el histórico disponible de 232, adaptar y reunir todas las páginas. Importar con `python3 scripts/publish_hiripro.py --input /ruta/export-232.json`. Revisar el CSV generado y sus ocho columnas de variables. No guardar exportaciones ni tokens dentro del repositorio.
-3. Si la API ya devuelve el contrato canónico completo, consultar directamente mediante `HIRIPRO_API_URL` y opcionalmente `HIRIPRO_API_TOKEN` (Authorization Bearer). Guardar estas variables fuera del repositorio, en un archivo de entorno accesible solo al publicador.
-4. Para consultas incrementales pedir un intervalo solapado que admita registros tardíos/correcciones. El importador combina las respuestas con el CSV anterior. Adaptar URL y rango en el servidor si la API requiere parámetros de fecha.
-5. Una vez publicado y validado el CSV real, cambiar `data.mode` de `demo` a `csv` en `config/portal.json` y publicar el cambio. El archivo inicial tiene solo cabeceras; no contiene observaciones reales.
-6. Mantener la publicación automática del servidor cada **10 minutos**, según lo solicitado, y conservar `data.refreshMinutes: 10` en el portal. El frontend revisa el CSV cada 10 minutos; eso no consulta directamente al equipo.
+```text
+/home/cmas/servicios/hiri232-publisher
+```
 
-Ejemplo de `/etc/hiripro-232.env`, fuera del repositorio:
+No se usa el clon de desarrollo. El wrapper rechaza un worktree sucio, hace
+`pull --ff-only`, ejecuta el exportador y el validador, agrega solamente el CSV
+y crea un commit únicamente si cambió el dato. Un `push` fallido deja el commit
+local para el siguiente reintento.
+
+La conexión carga los nombres `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` y
+`DB_PASSWORD` desde `/var/www/api_sensores/.env`. El archivo no se copia, no se
+imprime y no se agrega a Git.
+
+## Ejecución manual
 
 ```bash
-export HIRIPRO_API_URL='URL_REAL_CONFIRMADA_PARA_EL_SENSOR_232'
-export HIRIPRO_API_TOKEN='TOKEN_SI_CORRESPONDE'
+cd /home/cmas/servicios/hiri232-publisher
+/usr/bin/flock -n /tmp/hiripro-232-update.lock ./scripts/update_data.sh
 ```
 
-Probar primero `python3 scripts/publish_hiripro.py` con esas variables exportadas. Consulta y genera el CSV local; no hace commit ni push.
+Reconstrucción completa supervisada:
 
-El wrapper `scripts/update_data.sh` hace pull, consulta API, agrega únicamente `data/hiripro-232.csv`, crea commit si cambió y hace push a la rama actual. Requiere Python 3.10+, Git y credenciales de escritura de Git. No requiere paquetes pip. Usarlo en un clon exclusivo para no mezclar trabajo de desarrollo.
+```bash
+/var/www/api_sensores/venv/bin/python scripts/publish_hiripro.py --all
+/var/www/api_sensores/venv/bin/python scripts/validate_export.py
+```
 
-Cron de publicación cada 10 minutos (ajustar únicamente las rutas):
+El trabajo normal consulta únicamente desde dos días antes de la última fila
+publicada, para admitir correcciones tardías sin repetir el backfill.
+
+## Agenda
+
+Existe una sola entrada de cron, al minuto 37 de cada hora:
 
 ```cron
-*/10 * * * * /usr/bin/flock -n /tmp/hiripro-232.lock /bin/bash -c 'source /etc/hiripro-232.env && /bin/bash /srv/hiripro-232/scripts/update_data.sh' >> /var/log/hiripro-232.log 2>&1
+37 * * * * /usr/bin/flock -n /tmp/hiripro-232-update.lock /home/cmas/servicios/hiri232-publisher/scripts/update_data.sh >> /home/cmas/servicios/hiri232-publisher/data-update.log 2>&1
 ```
 
-Para una API que requiere adaptador, reemplazar la consulta del wrapper por el adaptador seguido de `publish_hiripro.py --input ...`. Mantener bloqueo, commits solo al cambiar CSV y salida de error ante fallos.
+El minuto evita las otras publicaciones horarias del servidor. El navegador
+usa `refreshMinutes: 10` para la última fila; esto no ejecuta el backfill ni
+crea commits cada diez minutos.
 
-## Comprobación antes de activar datos reales
+## Verificación
 
-- Ejecutar las pruebas indicadas en README.
-- Confirmar que todas las filas tienen `sensor_id=232`, timestamp con zona y unidades correctas.
-- Abrir el dashboard y comparar la última fecha y al menos un valor de cada variable con la API.
-- Probar selección histórica y ambas descargas. Los CSV incluyen ocho variables y `data_origin=MEDIDO`.
-- Verificar modo `csv`, ausencia de insignia DEMO y estado “Sin lecturas recientes” ante fechas antiguas.
-- Verificar cron, log, permisos Git y despliegue Pages. Confirmar que no siga activo el publicador anterior.
+```bash
+git -C /home/cmas/servicios/hiri232-publisher status --short --branch
+tail -n 50 /home/cmas/servicios/hiri232-publisher/data-update.log
+/var/www/api_sensores/venv/bin/python scripts/validate_export.py
+```
 
-No incluir tokens privados en `portal.json`, JavaScript, README o commits. El acceso hardcodeado del portal no protege el CSV público.
+Además se debe comprobar la URL de Pages, que la fecha de la tarjeta coincida
+con la API V3, que el CSV tenga solamente `sensor_id=232` y que el origen de las
+descargas sea `MEDIDO`.
 
-## Ubicación confirmada
+## Reversión
 
-Ante Puerto Lirquén: latitud `-36.723383`, longitud `-72.980878`. Las coordenadas están en `config/portal.json`. No sustituirlas por la ubicación anterior de San Vicente ni por coordenadas del informe de Coyhaique.
+1. Retirar únicamente la línea `hiripro-232-update` del crontab usando la copia
+   protegida registrada durante la instalación.
+2. Adquirir `/tmp/hiripro-232-update.lock`.
+3. Restaurar el clon o el CSV desde el respaldo fechado.
+4. Revertir el commit mediante `git revert`; no usar `reset --hard`.
+5. Restaurar la versión anterior de CORS del API si también se revierte la
+   consulta viva y recargar `api_sensores`.
+6. Verificar de nuevo el sitio público y registrar hashes y resultado.
 
-El portal calcula una referencia ambiental para el día anterior con al menos 18 horas distintas. Conviene mantener en las publicaciones la resolución original y sus ausencias: nunca rellenar huecos con ceros ni duplicar lecturas para aumentar cobertura. Los rangos y fuentes se documentan en el README y en la sección de interpretación de la página.
+Nunca se guardan credenciales, hashes reales, cookies, tokens ni archivos
+`.env` en el repositorio, cron, logs o documentación.

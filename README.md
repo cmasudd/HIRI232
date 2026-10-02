@@ -2,7 +2,7 @@
 
 Portal estático dedicado al **sensor (232) HIRIPRO-V5**, instalado en Ante Puerto Lirquén. Conserva el header institucional C+ UDD y presenta un dashboard nuevo, adaptable a escritorio y móvil.
 
-- Ocho tarjetas con la última lectura disponible de cada variable.
+- Ocho tarjetas con la última lectura real disponible de cada variable.
 - Históricos por variable: 24 horas, 7 días, 30 días, todo el histórico o fechas personalizadas.
 - Mediciones originales y promedios por hora/día, con estadísticas y tabla de detalle.
 - CSV de la selección y del histórico completo con las ocho variables.
@@ -12,9 +12,11 @@ Portal estático dedicado al **sensor (232) HIRIPRO-V5**, instalado en Ante Puer
 
 Edita `config/portal.json` y guarda el cambio en la rama publicada. Las credenciales se cambian en `access.username` y `access.password`.
 
-`data.mode: "demo"` genera un histórico simulado de 30 días en el navegador. El portal y las descargas lo identifican como **DEMO / SIMULADO**. No usa datos de otros sensores. `data.mode: "csv"` utiliza exclusivamente las mediciones publicadas en `data/hiripro-232.csv`; si el archivo está vacío o falla la carga, se muestra el estado correspondiente, sin sustituirlo por datos ficticios. Los períodos rápidos se calculan respecto de la hora actual para hacer visibles los períodos sin nuevas mediciones. Las tarjetas muestran la fecha individual de la última lectura válida.
+El portal productivo usa `data.mode: "csv"` y carga exclusivamente las mediciones reales publicadas en `data/hiripro-232.csv`; si el archivo está vacío o falla la carga, muestra el estado correspondiente y nunca sustituye datos ficticios. El histórico se publica cada hora. La última fila se consulta desde la API V3 cada 10 minutos y se fusiona en memoria, sin descargar el histórico desde MariaDB en el navegador. Los períodos rápidos se calculan respecto de la hora actual para hacer visibles los períodos sin nuevas mediciones.
 
-`refreshMinutes` controla la revisión de nuevas publicaciones (10 minutos inicialmente). `staleAfterMinutes` establece cuándo una lectura deja de considerarse reciente (60 minutos inicialmente).
+El modo `demo` se conserva únicamente para desarrollo local explícito. Todas las descargas del modo productivo quedan marcadas como `MEDIDO`.
+
+`refreshMinutes` controla la consulta de la última lectura (10 minutos), `historyUpdateMinutes` documenta la publicación horaria y `staleAfterMinutes` establece cuándo una lectura deja de considerarse reciente (60 minutos).
 
 El acceso es una barrera visual de demostración: las credenciales y los CSV se pueden consultar públicamente en un sitio estático. No protege los datos, tal como se solicitó.
 
@@ -30,7 +32,9 @@ Abre http://localhost:8080 e ingresa las credenciales. Se necesita HTTP para car
 
 En GitHub Pages configura la publicación desde la raíz de la rama que uses para el sitio. No hay compilación ni dependencias de Node. También puede servirse desde Nginx o cualquier servidor estático. Se incluyen Chart.js y el logo institucional localmente.
 
-La API se consulta **desde el servidor publicador**, y no desde el navegador. Sigue [las instrucciones para el agente del servidor](documentacion/AGENTE_SERVIDOR.md). La URL y el token de la API aún deben proporcionarse en ese servidor.
+El clon publicador consulta MariaDB local con acceso protegido y de solo lectura. El navegador consulta únicamente `/v3/vista-previa?id_dispositivo=232&limite=1`. Sigue [las instrucciones operativas del servidor](documentacion/AGENTE_SERVIDOR.md).
+
+El perfil del 2 de octubre de 2026 autorizó PM1, PM2.5, PM10, temperatura y humedad PMS5003, temperatura y humedad SHT40 y señal SIM7600G. SO₂, TVOC, eCO₂, GPS, velocidad, satélites y PM100 sólo presentaban centinelas; el voltaje era casi completamente cero y sin valores positivos desde julio. Esas columnas se excluyen para no publicar fallas como observaciones reales.
 
 ## Verificación
 
