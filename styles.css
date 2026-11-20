@@ -14,7 +14,7 @@ body{background:#f2f5f4}.section-wrap{max-width:1280px}.overview{padding-top:32p
 @media(max-width:760px){.history-summary article{padding:16px 13px}.history-summary strong{font-size:21px}.history-summary article>span{font-size:8px}.history-summary small{font-size:9px}.chart-panel{height:310px}}
 @media(max-width:560px){.history-summary{grid-template-columns:1fr}.history-summary article{padding:15px 18px}.history-summary article+article{border-left:0;border-top:1px solid #d6e5e3}.history-summary strong{font-size:26px}.history-summary article>span{font-size:9px}.history-summary small{font-size:10px}.reference-ticks{font-size:8px}.quality-legend{padding:13px}.chart-panel{height:300px}}
 /* Station marker and complete measurement summary. */
-.station-map-pin>span{background:var(--pm25-color,#657a80);text-shadow:0 1px 3px #0009;box-shadow:0 0 0 9px color-mix(in srgb,var(--pm25-color,#657a80) 20%,transparent),0 4px 12px #103d4830}
+.context-section.no-map{display:block}.context-section.no-map .daily-panel{max-width:none}
 .station-summary-popup .leaflet-popup-content{margin:0;width: min(300px,calc(100vw - 90px))!important;font-family:inherit;line-height:1.45}
 .station-summary-popup .leaflet-popup-content-wrapper{padding:0;overflow:hidden;border-radius:12px}
 .station-summary-popup .leaflet-popup-scrolled{border:0}

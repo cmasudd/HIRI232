@@ -1,6 +1,6 @@
 # Estación Material Particulado "HiriPro" C+ UDD
 
-Portal estático dedicado al **sensor (232) HIRIPRO-V5**, instalado en Ante Puerto Lirquén. Conserva el header institucional C+ UDD y presenta un dashboard nuevo, adaptable a escritorio y móvil.
+Portal estático dedicado al **sensor (232) HIRIPRO-V5**, ubicado en la Región del Biobío. Conserva el header institucional C+ UDD y presenta un dashboard adaptable a escritorio y móvil, sin publicar su georreferencia exacta.
 
 - Ocho tarjetas con la última lectura real disponible de cada variable.
 - Históricos por variable: 24 horas, 7 días, 30 días, todo el histórico o fechas personalizadas.
@@ -46,7 +46,7 @@ python -m unittest discover -s tests -v
 
 ## Ubicación y referencias ambientales
 
-La estación se ubica en **Ante Puerto Lirquén**, coordenadas **−36.723383, −72.980878**. El mapa usa Leaflet local y cartografía OpenStreetMap; necesita conexión para las teselas. Las coordenadas también quedan visibles y hay un enlace al mapa completo si la cartografía no está disponible.
+La web sólo identifica la **Región del Biobío**. No contiene mapa, coordenadas ni georreferencia exacta del equipo.
 
 El panel ambiental compara **ayer** (día calendario de Chile) con los rangos de concentración de 24 horas de la EPA para PM 2.5 y PM 10. Requiere al menos 18 horas distintas con datos y da igual peso a cada promedio horario. PM 1.0, temperatura, humedad y señal no reciben categorías AQI. La cobertura intrahoraria del sensor no está certificada: la comparación es orientativa.
 

@@ -66,12 +66,6 @@ test('hourly means have equal weight and daily aggregation preserves negative te
  const c=context();c.ctx.input=[{...row,timestamp:'2026-10-01T13:00:00Z',pm25_ugm3:10,pms_temperature_c:-2},...Array.from({length:10},(_,i)=>({...row,timestamp:`2026-10-01T14:${String(i).padStart(2,'0')}:00Z`,pm25_ugm3:30,pms_temperature_c:-4}))];
  assert.equal(c.run("dailyGroups(input,'pm25_ugm3')[0].value"),20);assert.equal(c.run("dailyGroups(input,'pms_temperature_c')[0].value"),-3);
 });
-test('map initializes at the user confirmed coordinates',()=>{
- const c=context(),state={};const chain={addTo(){return this;},bindPopup(){return this;},on(){return this;}};
- c.ctx.L={map(){return {setView(coords,zoom){state.view=coords;state.zoom=zoom;return this;}};},tileLayer(){return chain;},divIcon(){return {};},marker(coords){state.marker=coords;return chain;},circle(){return chain;}};
- c.ctx.input=JSON.parse(fs.readFileSync('config/portal.json','utf8'));c.run('config=input;initMap()');
- assert.equal(state.view[0],-36.723383);assert.equal(state.view[1],-72.980878);assert.equal(state.marker[0],-36.723383);assert.equal(state.marker[1],-72.980878);
-});
 test('daily range preserves observed extrema and gaps are not zeros',()=>{
  const c=context();c.ctx.input=[{...row,timestamp:'2026-10-01T13:00:00Z',pm25_ugm3:2},{...row,timestamp:'2026-10-01T13:30:00Z',pm25_ugm3:10},{...row,timestamp:'2026-10-01T14:00:00Z',pm25_ugm3:20},{...row,timestamp:'2026-10-03T13:00:00Z',pm25_ugm3:8}];
  const result=c.run("historicalChartData(dailyGroups(input,'pm25_ugm3'),VARIABLES[0],'day')");
@@ -85,25 +79,9 @@ test('visual reference scale marks the Chile threshold and does not classify oth
 test('latest hourly reading averages only the last hour with valid values',()=>{
  const c=context();c.ctx.input=[{...row,timestamp:'2026-10-02T12:59:00Z',pm25_ugm3:100},{...row,timestamp:'2026-10-02T13:00:00Z',pm25_ugm3:2},{...row,timestamp:'2026-10-02T13:30:00Z',pm25_ugm3:10},{...row,timestamp:'2026-10-02T14:00:00Z',pm25_ugm3:null}];assert.equal(c.run("latestHourly(input,'pm25_ugm3').value"),6);
 });
-
-test('map popup includes all readings, individual timestamps and daily summary',()=>{
- const c=context();c.ctx.input=[row,{...row,timestamp:'2026-10-02T14:00:00Z',pm25_ugm3:50,sht_temperature_c:null}];
- const summary=c.run('config={station:{latitude:-36.723383,longitude:-72.980878},data:{mode:"demo",staleAfterMinutes:60}};rows=normalize(input);mapSummary()');
- assert.equal(summary.color,'#dc493a');
- for(const label of ['PM 2.5','PM 1.0','PM 10','PMS5003','SHT40','SIM7600G','Señal telefónica','Resumen diario de ayer','SIMULADO'])assert.ok(summary.html.includes(label),label);
- assert.ok(summary.html.includes(c.run('dateFormat.format(new Date(rows[0].timestamp))')));
- assert.ok(summary.html.includes(c.run('dateFormat.format(new Date(rows[1].timestamp))')));
- assert.match(summary.html,/-36\.723383, -72\.980878/);
-});
-
-test('map marker and existing popup update with PM2.5 and handle missing values',()=>{
- const c=context(),state={};
- const marker={addTo(){return this;},bindPopup(html,options){state.html=html;state.options=options;return this;},setIcon(icon){state.icon=icon;return this;},setPopupContent(html){state.html=html;return this;}};
- c.ctx.L={map(){return {setView(){return this;}};},tileLayer(){return {addTo(){return this;},on(){return this;}};},divIcon(options){return options;},marker(_coords,options){state.icon=options.icon;return marker;}};
- c.ctx.input=JSON.parse(fs.readFileSync('config/portal.json','utf8'));c.run('config=input;initMap()');
- assert.match(state.icon.html,/#657a80/);assert.match(state.html,/Sin mediciones de PM2.5/);assert.equal(state.options.maxHeight,240);
- c.ctx.input=[{...row,pm25_ugm3:0}];c.run('rows=normalize(input);updateMapSummary()');assert.match(state.icon.html,/#269d62/);assert.match(state.html,/PM2.5: 0/);
- c.ctx.input=[{...row,pm25_ugm3:50}];c.run('rows=normalize(input);updateMapSummary()');assert.match(state.icon.html,/#dc493a/);assert.match(state.html,/PM2.5: 50/);
- c.ctx.input=[{...row,pm25_ugm3:-1}];c.run('rows=normalize(input);updateMapSummary()');assert.match(state.icon.html,/#657a80/);
- c.run('rows=[];updateMapSummary()');assert.match(state.icon.html,/#657a80/);assert.match(state.html,/Sin mediciones/);
+test('public site omits map and exact georeference',()=>{
+ const html=fs.readFileSync('index.html','utf8'),app=fs.readFileSync('app.js','utf8'),config=JSON.parse(fs.readFileSync('config/portal.json','utf8'));
+ assert.doesNotMatch(html,/leaflet|OpenStreetMap|id="map"|-36\.723383|-72\.980878/i);
+ assert.doesNotMatch(app,/stationMap|stationMarker|initMap|mapSummary|latitude|longitude/);
+ assert.equal(config.station.location,'Región del Biobío');assert.equal('latitude' in config.station,false);assert.equal('longitude' in config.station,false);
 });

@@ -6,9 +6,7 @@
   "station": {
     "id": 232,
     "name": "HIRIPRO-V5",
-    "location": "Ante Puerto Lirquén",
-    "latitude": -36.723383,
-    "longitude": -72.980878
+    "location": "Región del Biobío"
   },
   "data": {
     "mode": "csv",

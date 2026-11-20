@@ -20,7 +20,7 @@ const LIVE_COLUMNS = {
   sht_humidity_pct:'SHT40 [Humedad (%)]',
   signal:'SIM7600G [Intensidad señal telefónica (Adimensional)]'
 };
-let config, rows = [], chart, stationMap, stationMarker, refreshTimer, authenticated = false, loading = false;
+let config, rows = [], chart, refreshTimer, authenticated = false, loading = false;
 const HEALTH_CATEGORIES = [
   {label:'Buena',color:'#22845a',note:'Menor nivel de preocupación por contaminación.'},
   {label:'Moderada',color:'#b18a18',note:'Puede afectar a personas especialmente sensibles.'},
@@ -115,40 +115,6 @@ function historicalTooltip(item){
 }
 function renderHealthTable() {
   $('health-ranges').innerHTML=HEALTH_CATEGORIES.map((c,i)=>`<tr><td><span class="range-dot" style="background:${c.color}"></span>${c.label}</td><td>${HEALTH_SCALES.pm25_ugm3.labels[i]}</td><td>${HEALTH_SCALES.pm10_ugm3.labels[i]}</td><td>${c.note}</td></tr>`).join('');
-}
-function mapSummary() {
-  const latest=rows.findLast(row=>Number.isFinite(row.pm25_ugm3)&&row.pm25_ugm3>=0);
-  const color=latest?referenceColor(latest.pm25_ugm3,'pm25_ugm3'):'#657a80';
-  const readings=VARIABLES.map(v=>{
-    const reading=rows.findLast(row=>Number.isFinite(row[v.key])&&(!v.key.endsWith('_ugm3')||row[v.key]>=0));
-    return `<div class="map-reading"><div><b>${v.short}</b><span>${v.instrument}</span><small>${reading?dateFormat.format(new Date(reading.timestamp)):'Sin mediciones'}</small></div><strong>${format(reading?.[v.key])} <small>${v.unit}</small></strong></div>`;
-  }).join('');
-  const daily=['pm25_ugm3','pm10_ugm3'].map(key=>{
-    const summary=dailyReference(rows,key),variable=VARIABLES.find(v=>v.key===key);
-    return `<div class="map-daily-reading"><b>${variable.short}</b><span>${format(summary.value)} µg/m³ · ${summary.category?.label||'Datos insuficientes'}</span><small>${summary.day} · ${summary.hours}/18 horas mínimas con datos</small></div>`;
-  }).join('');
-  const stale=latest&&Date.now()-Date.parse(latest.timestamp)>config.data.staleAfterMinutes*60000;
-  const html=`<section class="station-popup" style="--pm25-color:${color}"><header class="station-popup-header"><b>HiriPro V5 · Sensor 232</b><span>Ante Puerto Lirquén</span><strong>PM2.5: ${format(latest?.pm25_ugm3)} µg/m³</strong><small>${latest?dateFormat.format(new Date(latest.timestamp)):'Sin mediciones de PM2.5'}${stale?' · Lectura antigua':''}${config.data.mode==='demo'?' · SIMULADO':''}</small></header><div class="station-popup-body"><h3>Últimas lecturas disponibles</h3>${readings}<h3>Resumen diario de ayer</h3>${daily}<p class="station-popup-note">Color según la última lectura de PM2.5, con la misma escala visual del histórico: verde (0), amarillo (25), rojo (50) y tonos morados desde 75 µg/m³. Sin PM2.5 disponible: gris. Una lectura puntual no determina cumplimiento diario.</p><footer>${config.station.latitude}, ${config.station.longitude}</footer></div></section>`;
-  return {color,html};
-}
-function mapIcon(color) {
-  return L.divIcon({className:'station-map-pin',html:`<span style="--pm25-color:${color}">232</span>`,iconSize:[46,46],iconAnchor:[23,23],popupAnchor:[0,-24]});
-}
-function updateMapSummary() {
-  if(!stationMarker)return;
-  const summary=mapSummary();
-  stationMarker.setIcon(mapIcon(summary.color));
-  stationMarker.setPopupContent(summary.html);
-}
-function initMap() {
-  if(stationMap){stationMap.invalidateSize();return;}
-  if(typeof L==='undefined'){$('map-status').textContent='No se pudo cargar el mapa. Usa el enlace para abrir la ubicación.';return;}
-  const {latitude,longitude}=config.station;
-  stationMap=L.map('map',{scrollWheelZoom:false}).setView([latitude,longitude],15);
-  const tiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(stationMap);
-  tiles.on('tileerror',()=>{$('map-status').textContent='La cartografía no está disponible. Las coordenadas de la estación siguen indicadas y puedes abrir el mapa completo.';});
-  const summary=mapSummary();
-  stationMarker=L.marker([latitude,longitude],{icon:mapIcon(summary.color),title:'HiriPro V5 · Sensor 232: clic para ver todas las mediciones'}).addTo(stationMap).bindPopup(summary.html,{className:'station-summary-popup',maxWidth:320,minWidth:220,maxHeight:240});
 }
 const dailyBandsPlugin={id:'dailyBands',afterDraw(instance,_args,options){
   if(!options?.key||!instance.chartArea)return;const scale=HEALTH_SCALES[options.key],{left,right,top,bottom}=instance.chartArea,y=instance.scales.y.getPixelForValue(scale.reference);if(y<top||y>bottom)return;
@@ -271,8 +237,8 @@ async function loadData() {
     $('data-status').textContent=config.data.mode==='demo'?'Vista de demostración':!latest?'Esperando mediciones':stale?'Sin lecturas recientes':'Mediciones actualizadas';
     $('data-notice').textContent=config.data.mode==='demo'?'Datos simulados para presentar el servicio. No corresponden a mediciones reales del puerto.':!latest?'Todavía no hay datos publicados para el sensor 232.':`Última lectura revisada cada ${config.data.refreshMinutes} minutos${liveAvailable?' desde la API':' (se mantiene el CSV publicado)'}; histórico actualizado cada ${config.data.historyUpdateMinutes} minutos.${stale?' La última lectura está fuera del intervalo esperado.':''}`;
     if(latest&&!$('date-from').value){$('date-to').value=localDay(latest.timestamp);$('date-from').value=localDay(new Date(new Date(latest.timestamp).getTime()-7*86400000).toISOString());}
-    updateMapSummary();renderCards();renderDailySummary();renderHistory();
-  }catch(error){$('data-status').textContent='No se pudo actualizar';$('status-dot').className='status-dot stale';$('data-notice').textContent=`No fue posible cargar los datos. ${rows.length?'Se mantiene la última descarga disponible.':'Revisa la publicación del archivo de la estación.'} Detalle: ${error.message}`;updateMapSummary();renderCards();renderDailySummary();renderHistory();}
+    renderCards();renderDailySummary();renderHistory();
+  }catch(error){$('data-status').textContent='No se pudo actualizar';$('status-dot').className='status-dot stale';$('data-notice').textContent=`No fue posible cargar los datos. ${rows.length?'Se mantiene la última descarga disponible.':'Revisa la publicación del archivo de la estación.'} Detalle: ${error.message}`;renderCards();renderDailySummary();renderHistory();}
   finally{loading=false;$('refresh').disabled=false;}
 }
 function csvCell(value){const text=String(value??'');return /[",\n\r]/.test(text)?`"${text.replaceAll('"','""')}"`:text;}
@@ -283,11 +249,11 @@ function downloadCSV(selectedRows,suffix) {
 }
 async function init(){
   $('login-form').querySelector('[type=submit]').disabled=true;
-  try{const response=await fetch('config/portal.json',{cache:'no-store'});if(!response.ok)throw Error('No se encontró config/portal.json.');config=await response.json();if(config.station?.id!==232||!Number.isFinite(config.station.latitude)||!Number.isFinite(config.station.longitude)||!config.access?.username||!config.access?.password||!['demo','csv'].includes(config.data?.mode)||!config.data.csvUrl||!config.data.latestUrl||!(config.data.refreshMinutes>0)||!(config.data.historyUpdateMinutes>0)||!(config.data.staleAfterMinutes>0))throw Error('Configuración del portal inválida.');$('login-form').querySelector('[type=submit]').disabled=false;}
+  try{const response=await fetch('config/portal.json',{cache:'no-store'});if(!response.ok)throw Error('No se encontró config/portal.json.');config=await response.json();if(config.station?.id!==232||!config.station.location||!config.access?.username||!config.access?.password||!['demo','csv'].includes(config.data?.mode)||!config.data.csvUrl||!config.data.latestUrl||!(config.data.refreshMinutes>0)||!(config.data.historyUpdateMinutes>0)||!(config.data.staleAfterMinutes>0))throw Error('Configuración del portal inválida.');$('login-form').querySelector('[type=submit]').disabled=false;}
   catch(error){$('config-error').textContent=`No se pudo preparar el portal: ${error.message} Abre el sitio desde un servidor HTTP.`;$('config-error').hidden=false;return;}
   $('variable').innerHTML=VARIABLES.map(v=>`<option value="${v.key}">${v.instrument} · ${v.label}</option>`).join('');
   renderHealthTable();
-  $('login-form').addEventListener('submit',event=>{event.preventDefault();if($('username').value.trim()!==config.access.username||$('password').value!==config.access.password){$('login-error').textContent='Usuario o contraseña incorrectos.';$('login-error').hidden=false;return;}authenticated=true;$('login-error').hidden=true;$('password').value='';$('login-view').hidden=true;$('dashboard-view').hidden=false;window.scrollTo(0,0);initMap();$('logout').focus({preventScroll:true});loadData();refreshTimer=setInterval(loadData,config.data.refreshMinutes*60000);});
+  $('login-form').addEventListener('submit',event=>{event.preventDefault();if($('username').value.trim()!==config.access.username||$('password').value!==config.access.password){$('login-error').textContent='Usuario o contraseña incorrectos.';$('login-error').hidden=false;return;}authenticated=true;$('login-error').hidden=true;$('password').value='';$('login-view').hidden=true;$('dashboard-view').hidden=false;window.scrollTo(0,0);$('logout').focus({preventScroll:true});loadData();refreshTimer=setInterval(loadData,config.data.refreshMinutes*60000);});
   $('logout').addEventListener('click',()=>{authenticated=false;clearInterval(refreshTimer);$('dashboard-view').hidden=true;$('login-view').hidden=false;$('password').value='';$('username').focus();window.scrollTo(0,0);});
   $('toggle-password').addEventListener('click',()=>{const show=$('password').type==='password';$('password').type=show?'text':'password';$('toggle-password').textContent=show?'Ocultar':'Ver';$('toggle-password').setAttribute('aria-label',show?'Ocultar contraseña':'Mostrar contraseña');$('toggle-password').setAttribute('aria-pressed',String(show));});
   ['variable','period','aggregation','date-from','date-to'].forEach(id=>$(id).addEventListener('change',renderHistory));$('refresh').addEventListener('click',loadData);
