@@ -1,5 +1,7 @@
 # Estación Material Particulado "HiriPro" C+ UDD
 
+[Visitar el sitio web](https://cmasudd.github.io/HIRI232/)
+
 Portal estático dedicado al **sensor (232) HIRIPRO-V5**, ubicado en la Región del Biobío. Conserva el header institucional C+ UDD y presenta un dashboard adaptable a escritorio y móvil, sin publicar su georreferencia exacta.
 
 - Ocho tarjetas con la última lectura real disponible de cada variable.
